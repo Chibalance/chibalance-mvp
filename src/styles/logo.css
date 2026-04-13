@@ -1,0 +1,35 @@
+.logo-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.logo-icon {
+  width: 42px;
+  height: 42px;
+  background: #4f46e5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+}
+
+/* NEW */
+.logo-icon-svg {
+  width: 22px;
+  height: 22px;
+  color: white;
+}
+
+.logo-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+.logo-subtitle {
+  font-size: 14px;
+  color: #b4bed2;
+  margin: 0;
+}
