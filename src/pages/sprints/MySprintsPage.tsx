@@ -4,6 +4,8 @@ import { collection, getDocs, query, where } from "firebase/firestore";
 
 import SprintListCardWide from "../../components/sprints/SprintListCardWide";
 
+/* ================= TYPES ================= */
+
 type Sprint = {
   id: string;
   title: string;
@@ -14,6 +16,8 @@ type Sprint = {
 
 type FilterTab = "all" | "in-progress" | "completed";
 
+/* ================= COMPONENT ================= */
+
 export default function MySprintsPage() {
   const [sprints, setSprints] = useState<Sprint[]>([]);
   const [activeFilter, setActiveFilter] = useState<FilterTab>("all");
@@ -22,47 +26,84 @@ export default function MySprintsPage() {
     fetchSprints();
   }, []);
 
+  /* ================= FETCH ================= */
+
   const fetchSprints = async () => {
     const user = auth.currentUser;
     if (!user) return;
 
-    /* USER SPRINTS */
-    const userSnap = await getDocs(
-      query(collection(db, "user_sprints"), where("userId", "==", user.uid))
-    );
+    try {
+      /* USER SPRINTS */
+      const userSnap = await getDocs(
+        query(collection(db, "user_sprints"), where("userId", "==", user.uid))
+      );
 
-    /* ALL SPRINTS */
-    const sprintSnap = await getDocs(collection(db, "sprints"));
+      /* ALL SPRINTS */
+      const sprintSnap = await getDocs(collection(db, "sprints"));
 
-    const sprintMap: any = {};
-    sprintSnap.docs.forEach((doc) => {
-      sprintMap[doc.id] = doc.data();
-    });
+      const sprintMap: any = {};
+      sprintSnap.docs.forEach((doc) => {
+        sprintMap[doc.id] = doc.data();
+      });
 
-    /* MERGE */
-    const merged: Sprint[] = userSnap.docs.map((doc) => {
-      const d = doc.data();
-      const s = sprintMap[d.sprintId];
+      /* ================= DYNAMIC PROGRESS ================= */
 
-      return {
-        id: d.sprintId,
-        title: s?.title || "Untitled Sprint",
-        description: s?.description || "",
-        progress: d.progress || 0,
-        status: d.status === "completed" ? "completed" : "in-progress",
-      };
-    });
+      const merged: Sprint[] = await Promise.all(
+        userSnap.docs.map(async (doc) => {
+          const d = doc.data();
+          const s = sprintMap[d.sprintId];
 
-    setSprints(merged);
+          /* TOTAL MISSIONS */
+          const missionSnap = await getDocs(
+            query(
+              collection(db, "missions"),
+              where("sprintId", "==", d.sprintId)
+            )
+          );
+
+          const total = missionSnap.size;
+
+          /* COMPLETED MISSIONS */
+          const completedSnap = await getDocs(
+            query(
+              collection(db, "user_missions"),
+              where("userId", "==", user.uid),
+              where("sprintId", "==", d.sprintId),
+              where("status", "==", "passed")
+            )
+          );
+
+          const completed = completedSnap.size;
+
+          const progress =
+            total > 0 ? Math.round((completed / total) * 100) : 0;
+
+          return {
+            id: d.sprintId,
+            title: s?.title || "Untitled Sprint",
+            description: s?.description || "",
+            progress,
+            status: progress === 100 ? "completed" : "in-progress",
+          };
+        })
+      );
+
+      setSprints(merged);
+
+    } catch (error) {
+      console.error("Error fetching sprints:", error);
+    }
   };
 
-  /* FILTER */
+  /* ================= FILTER ================= */
+
   const filtered = sprints.filter((s) => {
     if (activeFilter === "all") return true;
     return s.status === activeFilter;
   });
 
-  /* COUNTS */
+  /* ================= COUNTS ================= */
+
   const filterTabs = [
     { id: "all" as const, label: "All", count: sprints.length },
     {
@@ -77,6 +118,8 @@ export default function MySprintsPage() {
     },
   ];
 
+  /* ================= UI ================= */
+
   return (
     <div className="mysprints-page">
 
@@ -87,20 +130,20 @@ export default function MySprintsPage() {
       </div>
 
       {/* TABS */}
-    <div className="mysprints-tabs">
-      {filterTabs.map((tab) => (
-        <button
-          key={tab.id}
-          onClick={() => setActiveFilter(tab.id)}
-          className={`tab-btn tab-${tab.id} ${
-            activeFilter === tab.id ? "active" : ""
-          }`}
-        >
-          <span>{tab.label}</span>
-          <span className="count">({tab.count})</span>
-        </button>
-      ))}
-    </div>
+      <div className="mysprints-tabs">
+        {filterTabs.map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveFilter(tab.id)}
+            className={`tab-btn tab-${tab.id} ${
+              activeFilter === tab.id ? "active" : ""
+            }`}
+          >
+            <span>{tab.label}</span>
+            <span className="count">({tab.count})</span>
+          </button>
+        ))}
+      </div>
 
       {/* LIST */}
       <div className="mysprints-list">
@@ -114,6 +157,7 @@ export default function MySprintsPage() {
           </div>
         )}
       </div>
+
     </div>
   );
 }

@@ -11,18 +11,26 @@ export default function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState("user"); // ✅ NEW
   const [error, setError] = useState("");
 
   const handleRegister = async (e: any) => {
     e.preventDefault();
 
+    // 🔒 BASIC CONTROL (IMPORTANT)
+    if (role === "admin" && !email.endsWith("@admin.com")) {
+      setError("Admin accounts must use @admin.com email");
+      return;
+    }
+
     try {
       const res = await createUserWithEmailAndPassword(auth, email, password);
 
-      // Save user in Firestore
+      // ✅ Save user in Firestore WITH ROLE
       await setDoc(doc(db, "users", res.user.uid), {
         name,
         email,
+        role, // ✅ ADDED
         createdAt: new Date(),
       });
 
@@ -34,7 +42,7 @@ export default function RegisterPage() {
 
   return (
     <div className="register-page">
-      
+
       {/* LEFT */}
       <div className="register-left">
         <div className="login-brand">
@@ -76,6 +84,16 @@ export default function RegisterPage() {
             onChange={(e) => setPassword(e.target.value)}
             className="register-input"
           />
+
+          {/* ✅ ROLE SELECTOR */}
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            className="register-select"
+          >
+            <option value="user">User</option>
+            <option value="admin">Admin</option>
+          </select>
 
           <button type="submit" className="register-btn">
             Create Account

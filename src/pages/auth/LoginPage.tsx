@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { signInWithEmailAndPassword } from "firebase/auth";
-import { auth } from "../../services/firebase";
+import { auth, db } from "../../services/firebase";
 import { useNavigate, Link } from "react-router-dom";
+import { doc, getDoc } from "firebase/firestore";
 import Logo from "../../components/layout/Logo";
 
 export default function LoginPage() {
@@ -11,16 +12,35 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
-  const handleLogin = async (e: any) => {
-    e.preventDefault();
+const handleLogin = async (e: any) => {
+  e.preventDefault();
 
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      navigate("/dashboard");
-    } catch (err: any) {
-      setError("Invalid email or password");
+  try {
+    const res = await signInWithEmailAndPassword(auth, email, password);
+
+    const user = res.user;
+
+    // ✅ GET USER ROLE FROM FIRESTORE
+    const snap = await getDoc(doc(db, "users", user.uid));
+
+    if (!snap.exists()) {
+      throw new Error("User data not found");
     }
-  };
+
+    const role = snap.data().role;
+
+    // ✅ ROUTE BASED ON ROLE
+    if (role === "admin") {
+      navigate("/admin");
+    } else {
+      navigate("/dashboard");
+    }
+
+  } catch (err: any) {
+    console.log("ERROR:", err.code, err.message);
+    setError("Invalid email or password");
+  }
+};
 
   return (
     <div className="login-page">

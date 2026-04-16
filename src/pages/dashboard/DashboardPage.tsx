@@ -1,9 +1,17 @@
 import { useEffect, useState } from "react";
 import { auth, db } from "../../services/firebase";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  query,
+  where,
+  setDoc,
+  doc,
+} from "firebase/firestore";
 import { useNavigate } from "react-router-dom";
 
 /* ================= TYPES ================= */
+
 type Sprint = {
   id: string;
   title: string;
@@ -12,15 +20,25 @@ type Sprint = {
   status: "in-progress" | "completed";
 };
 
+type BasicSprint = {
+  id: string;
+  title: string;
+  description: string;
+};
+
+/* ================= COMPONENT ================= */
+
 export default function DashboardPage() {
-  const [sprints, setSprints] = useState<Sprint[]>([]);
+  const [activeSprints, setActiveSprints] = useState<Sprint[]>([]);
+  const [availableSprints, setAvailableSprints] = useState<BasicSprint[]>([]);
   const navigate = useNavigate();
 
   useEffect(() => {
     fetchSprints();
   }, []);
 
-  /* ================= FETCH DATA ================= */
+  /* ================= FETCH ================= */
+
   const fetchSprints = async () => {
     const user = auth.currentUser;
     if (!user) return;
@@ -28,62 +46,124 @@ export default function DashboardPage() {
     try {
       /* USER SPRINTS */
       const userSprintSnap = await getDocs(
-        query(
-          collection(db, "user_sprints"),
-          where("userId", "==", user.uid)
-        )
+        query(collection(db, "user_sprints"), where("userId", "==", user.uid))
       );
 
-      const userSprints = userSprintSnap.docs.map((doc) => {
-        const data = doc.data() as any;
-
-        return {
-          sprintId: data.sprintId,
-          progress: data.progress || 0,
-          status: data.status || "in-progress",
-        };
-      });
+      const userSprints = userSprintSnap.docs.map((doc) => doc.data());
 
       /* ALL SPRINTS */
       const sprintSnap = await getDocs(collection(db, "sprints"));
 
-      const allSprints = sprintSnap.docs.map((doc) => {
-        const data = doc.data() as any;
+      const allSprints = sprintSnap.docs.map((doc) => ({
+        id: doc.id,
+        title: doc.data().title || "",
+        description: doc.data().description || "",
+      }));
 
-        return {
-          id: doc.id,
-          title: data.title || "",
-          description: data.description || "",
-        };
-      });
+      /* ================= ACTIVE SPRINTS WITH LIVE PROGRESS ================= */
 
-      /* MERGE */
-      const merged: Sprint[] = userSprints.map((us) => {
-        const sprint = allSprints.find((s) => s.id === us.sprintId);
+      const active: Sprint[] = await Promise.all(
+        userSprints.map(async (us: any) => {
+          const sprint = allSprints.find((s) => s.id === us.sprintId);
 
-        return {
-          id: us.sprintId,
-          title: sprint?.title || "Untitled Sprint",
-          description: sprint?.description || "",
-          progress: us.progress,
-          status: us.status === "completed" ? "completed" : "in-progress",
-        };
-      });
+          /* TOTAL MISSIONS */
+          const missionSnap = await getDocs(
+            query(
+              collection(db, "missions"),
+              where("sprintId", "==", us.sprintId)
+            )
+          );
 
-      setSprints(merged);
+          const total = missionSnap.size;
+
+          /* COMPLETED MISSIONS */
+          const completedSnap = await getDocs(
+            query(
+              collection(db, "user_missions"),
+              where("userId", "==", user.uid),
+              where("sprintId", "==", us.sprintId),
+              where("status", "==", "passed")
+            )
+          );
+
+          const completed = completedSnap.size;
+
+          const progress =
+            total > 0 ? Math.round((completed / total) * 100) : 0;
+
+          return {
+            id: us.sprintId,
+            title: sprint?.title || "Untitled Sprint",
+            description: sprint?.description || "",
+            progress,
+            status: progress === 100 ? "completed" : "in-progress",
+          };
+        })
+      );
+
+      /* ================= AVAILABLE SPRINTS ================= */
+
+      const available: BasicSprint[] = allSprints.filter(
+        (s) => !userSprints.some((us: any) => us.sprintId === s.id)
+      );
+
+      setActiveSprints(active);
+      setAvailableSprints(available);
 
     } catch (error) {
       console.error("Error fetching sprints:", error);
     }
   };
 
-  /* ================= RENDER ================= */
+  /* ================= JOIN SPRINT ================= */
+
+  const joinSprint = async (sprintId: string) => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    /* CREATE USER SPRINT */
+    await setDoc(doc(db, "user_sprints", `${user.uid}_${sprintId}`), {
+      userId: user.uid,
+      sprintId,
+      progress: 0,
+      status: "in-progress",
+      createdAt: new Date(),
+    });
+
+    /* 🔥 GET MISSIONS OF THIS SPRINT */
+    const missionSnap = await getDocs(
+      query(collection(db, "missions"), where("sprintId", "==", sprintId))
+    );
+
+    /* 🔥 CREATE USER_MISSIONS FOR EACH */
+    const promises = missionSnap.docs.map((m) => {
+      return setDoc(
+        doc(db, "user_missions", `${user.uid}_${m.id}`),
+        {
+          userId: user.uid,
+          missionId: m.id,
+          sprintId,
+          status: "not-started",
+          score: 0,
+          attempts: 0,
+          createdAt: new Date(),
+        }
+      );
+    });
+
+    await Promise.all(promises);
+
+    fetchSprints();
+  };
+
+  /* ================= UI ================= */
+
   return (
     <div className="dashboard-page">
 
       <div className="dashboard-grid">
 
-        {/* LEFT SECTION */}
+        {/* LEFT */}
         <div className="dashboard-left">
 
           {/* HEADER */}
@@ -92,21 +172,20 @@ export default function DashboardPage() {
             <p>Continue your Skill Sprint journey.</p>
           </div>
 
-          {/* SPRINTS */}
+          {/* ACTIVE SPRINTS */}
           <div>
             <h2 className="dashboard-section-title">
               Your Active Sprints
             </h2>
 
             <div className="dashboard-cards">
-              {sprints.length > 0 ? (
-                sprints.map((s) => (
+              {activeSprints.length > 0 ? (
+                activeSprints.map((s) => (
                   <div key={s.id} className="dashboard-card">
 
                     <h3>{s.title}</h3>
                     <p>{s.description}</p>
 
-                    {/* PROGRESS */}
                     <div className="dashboard-progress-bar">
                       <div
                         className="dashboard-progress-fill"
@@ -118,7 +197,6 @@ export default function DashboardPage() {
                       {s.progress}% complete
                     </p>
 
-                    {/* BUTTON */}
                     <button
                       className="dashboard-btn"
                       onClick={() => navigate(`/sprint/${s.id}`)}
@@ -129,17 +207,45 @@ export default function DashboardPage() {
                   </div>
                 ))
               ) : (
-                <p>No active sprints found.</p>
+                <p>No active sprints yet.</p>
+              )}
+            </div>
+          </div>
+
+          {/* AVAILABLE SPRINTS */}
+          <div style={{ marginTop: "30px" }}>
+            <h2 className="dashboard-section-title">
+              Available Sprints
+            </h2>
+
+            <div className="dashboard-cards">
+              {availableSprints.length > 0 ? (
+                availableSprints.map((s) => (
+                  <div key={s.id} className="dashboard-card">
+
+                    <h3>{s.title}</h3>
+                    <p>{s.description}</p>
+
+                    <button
+                      className="dashboard-btn"
+                      onClick={() => joinSprint(s.id)}
+                    >
+                      Join Sprint
+                    </button>
+
+                  </div>
+                ))
+              ) : (
+                <p>No new sprints available.</p>
               )}
             </div>
           </div>
 
         </div>
 
-        {/* RIGHT SECTION */}
+        {/* RIGHT */}
         <div className="dashboard-right">
 
-          {/* PROGRESS SUMMARY */}
           <div className="dashboard-panel">
             <h3>Progress Summary</h3>
 
@@ -151,13 +257,12 @@ export default function DashboardPage() {
             </div>
 
             <div className="dashboard-stats">
-              <p>Active Sprints: {sprints.length}</p>
+              <p>Active Sprints: {activeSprints.length}</p>
               <p>Badges Earned: 5</p>
               <p>Learning Streak: 12 days</p>
             </div>
           </div>
 
-          {/* ACTIVITY STATUS */}
           <div className="dashboard-panel">
             <h3>Activity Status</h3>
 

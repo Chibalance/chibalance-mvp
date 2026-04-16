@@ -18,6 +18,15 @@ import ProgressPage from "./pages/progress/ProgressPage";
 import EvidencePackPage from "./pages/evidence/EvidencePackPage";
 import ProfilePage from "./pages/profile/ProfilePage";
 
+/* Admin Pages */
+import AdminRoute from "./routes/AdminRoute";
+import AdminDashboardPage from "./pages/admin/AdminDashboardPage";
+import ManageMissionsPage from "./pages/admin/ManageMissionsPage";
+import ManageSprintsPage from "./pages/admin/ManageSprintsPage";
+import UsersPage from "./pages/admin/UsersPage";
+import AdminProfilePage from "./pages/admin/AdminProfilePage";
+
+
 export default function App() {
   return (
     <Routes>
@@ -41,6 +50,52 @@ export default function App() {
         <Route path="/progress" element={<ProgressPage />} />
         <Route path="/evidence-pack" element={<EvidencePackPage />} />
         <Route path="/profile" element={<ProfilePage />} />
+
+        {/* Admin */}
+        <Route
+          path="/admin"
+          element={
+            <AdminRoute>
+              <AdminDashboardPage />
+            </AdminRoute>
+          }
+        />
+
+        <Route
+          path="/admin/sprints"
+          element={
+            <AdminRoute>
+              <ManageSprintsPage />
+            </AdminRoute>
+          }
+        />
+
+        <Route
+          path="/admin/missions"
+          element={
+            <AdminRoute>
+              <ManageMissionsPage />
+            </AdminRoute>
+          }
+        />
+
+        <Route
+          path="/admin/users"
+          element={
+            <AdminRoute>
+              <UsersPage />
+            </AdminRoute>
+          }
+        />
+
+        <Route
+          path="/admin/profile"
+          element={
+            <AdminRoute>
+              <AdminProfilePage />
+            </AdminRoute>
+          }
+        />
 
       </Route>
 
