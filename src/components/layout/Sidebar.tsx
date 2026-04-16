@@ -6,7 +6,6 @@ import { useEffect, useState } from "react";
 import Logo from "./Logo";
 
 export default function Sidebar() {
-  const navigate = useNavigate();
 
   const [role, setRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
